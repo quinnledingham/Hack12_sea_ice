@@ -1,7 +1,6 @@
 import os
 import pdb
 import argparse
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -17,7 +16,6 @@ from model import Canadian_mapping_model_func, MonteCarloConsistency, Unsupervis
 from trainer import Trainer_container, visualization_func
 import json
 from generate_geotiff_province_map import map_generation
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def set_seed(seed=42):
     random.seed(seed)
@@ -459,33 +457,14 @@ def create_data_loaders(root_dir, batch_size=16, num_workers=4, include_backgrou
     ])
 
     # Create datasets
-    train_dataset = IceClassificationDataset(
-        root_dir, 'train', transform=train_transform, include_background=include_background
-    )
-
-    val_dataset = IceClassificationDataset(
-        root_dir, 'val', include_background=include_background
-    )
-
-    test_dataset = IceClassificationDataset(
-        root_dir, 'test', include_background=include_background
-    )
+    train_dataset = IceClassificationDataset(root_dir, 'train', transform=train_transform, include_background=include_background)
+    val_dataset = IceClassificationDataset(root_dir, 'val', include_background=include_background)
+    test_dataset = IceClassificationDataset(root_dir, 'test', include_background=include_background)
 
     # Create data loaders with custom collate
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True, collate_fn=custom_collate_fn
-    )
-
-    val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True, collate_fn=custom_collate_fn
-    )
-
-    test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True, collate_fn=custom_collate_fn
-    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, collate_fn=custom_collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True, collate_fn=custom_collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True, collate_fn=custom_collate_fn)
 
     # Get class weights
     class_weights = train_dataset.get_class_weights()
@@ -493,10 +472,7 @@ def create_data_loaders(root_dir, batch_size=16, num_workers=4, include_backgrou
 
     return train_loader, val_loader, test_loader, weight_tensor, test_dataset
 
-
 def main():
-
-
     args = parse_args()
 
     # Load configuration
@@ -513,6 +489,9 @@ def main():
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     os.makedirs(args.results_dir, exist_ok=True)
 
+    for i in range(torch.cuda.device_count()):
+        print(f"Device {i}: {torch.cuda.get_device_name(i)}")
+
     # Set device
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -526,7 +505,6 @@ def main():
         include_background=False
     )
 
-    #  if you want to show the images, uncommand the follwoing
     batch = next(iter(train_loader))
 
     print("Batch keys:", batch.keys())
@@ -545,11 +523,15 @@ def main():
     d_conv = model_params['d_conv']
     Num_channel = data_info_params['Num_channel']
 
+    import torchvision.models.segmentation as seg_models
+    model = seg_models.deeplabv3_resnet50(weights=False).to('cuda:0')
+
+    model.classifier[4] = torch.nn.Conv2d(256, num_classes, kernel_size=3, stride=1).to('cuda:0')
 
     model = Canadian_mapping_model_func(num_classes=num_classes, dim=hidden_dim, d_conv=d_conv, in_channel=Num_channel)
     model.to(device)
 
-    MC_dropout_model = MonteCarloConsistency(model, num_samples=2)
+    MC_dropout_model = MonteCarloConsistency(model, num_samples=2, num_classes=num_classes)
     uncertainty_estimator = UncertaintyEstimator(model, num_samples=10)
     criterion = nn.CrossEntropyLoss(ignore_index=Train_setting_params['ignore_index'])
     optimizer = torch.optim.Adam(model.parameters(), lr=Train_setting_params['learning_rate'])
@@ -557,14 +539,14 @@ def main():
 
     ignore_index = Train_setting_params['ignore_index']
 
-
     model_save_path = os.path.join(args.results_dir, "model_weights.pth")
     Train_func = Trainer_container(Train_setting_params, model_save_path, model, MC_dropout_model, criterion, num_epochs, optimizer,
                                    train_loader, val_loader, test_loader, device, num_classes, ignore_index, 0.0)
-    # Train_func.train()
-    # Train_func.test_()
-    vis_results = visualization_func(uncertainty_estimator, model, model_save_path, args.results_dir, test_dataset, 15, device,
-                                     "Figure")
+    
+    Train_func.train()
+    #Train_func.test_()
+
+    vis_results = visualization_func(uncertainty_estimator, model, model_save_path, args.results_dir, test_dataset, 15, device, "Figure")
     vis_results.vis_func()
     if Train_setting_params["predict_whole_map"] == True:
         print("start to predict whole map...")

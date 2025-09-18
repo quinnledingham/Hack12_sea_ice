@@ -75,14 +75,9 @@ def extract_patches_with_overlap(gt_path, hh_path, hv_path, output_dir, patch_si
                     filename = f"class_{dominant_class}_x{int(ulx)}_y{int(uly)}.tif"
 
                     # Save patches as GeoTIFF
-                    save_geotiff(os.path.join(output_dir, 'gt', filename),
-                                 gt_patch, new_gt, projection, gdal.GDT_Byte)
-
-                    save_geotiff(os.path.join(output_dir, 'hh', filename),
-                                 hh_patch, new_gt, projection, hh_ds.GetRasterBand(1).DataType)
-
-                    save_geotiff(os.path.join(output_dir, 'hv', filename),
-                                 hv_patch, new_gt, projection, hv_ds.GetRasterBand(1).DataType)
+                    save_geotiff(os.path.join(output_dir, 'gt', filename), gt_patch, new_gt, projection, gdal.GDT_Byte)
+                    save_geotiff(os.path.join(output_dir, 'hh', filename), hh_patch, new_gt, projection, hh_ds.GetRasterBand(1).DataType)
+                    save_geotiff(os.path.join(output_dir, 'hv', filename), hv_patch, new_gt, projection, hv_ds.GetRasterBand(1).DataType)
 
                     patch_count += 1
 
@@ -181,14 +176,9 @@ def extract_patches_by_class_distribution(gt_path, hh_path, hv_path, output_dir,
                             filename = f"x{int(ulx)}_y{int(uly)}.tif"
 
                             # Save patches as GeoTIFF in class-specific folder
-                            save_geotiff(os.path.join(output_dir, f'class_{class_id}', 'gt', filename),
-                                         gt_patch, new_gt, projection, gdal.GDT_Byte)
-
-                            save_geotiff(os.path.join(output_dir, f'class_{class_id}', 'hh', filename),
-                                         hh_patch, new_gt, projection, hh_ds.GetRasterBand(1).DataType)
-
-                            save_geotiff(os.path.join(output_dir, f'class_{class_id}', 'hv', filename),
-                                         hv_patch, new_gt, projection, hv_ds.GetRasterBand(1).DataType)
+                            save_geotiff(os.path.join(output_dir, f'class_{class_id}', 'gt', filename), gt_patch, new_gt, projection, gdal.GDT_Byte)
+                            save_geotiff(os.path.join(output_dir, f'class_{class_id}', 'hh', filename), hh_patch, new_gt, projection, hh_ds.GetRasterBand(1).DataType)
+                            save_geotiff(os.path.join(output_dir, f'class_{class_id}', 'hv', filename), hv_patch, new_gt, projection, hv_ds.GetRasterBand(1).DataType)
 
                     patch_count += 1
 
@@ -213,8 +203,8 @@ def main():
     # Ground truth files
     gt_files = {
         'train': '/home/yimin/2025/Hackathon_Sea_Ice_Typing/gt_tiff/train_gt.tif',
-        'val': '/home/yimin/2025/Hackathon_Sea_Ice_Typing/gt_tiff/val_gt.tif',
-        'test': '/home/yimin/2025/Hackathon_Sea_Ice_Typing/gt_tiff/test_gt.tif'
+        'val':   '/home/yimin/2025/Hackathon_Sea_Ice_Typing/gt_tiff/val_gt.tif',
+        'test':  '/home/yimin/2025/Hackathon_Sea_Ice_Typing/gt_tiff/test_gt.tif'
     }
 
     # Process each dataset
@@ -222,6 +212,8 @@ def main():
         print(f"Processing {dataset_name} dataset...")
 
         gt_path = os.path.join(base_dir, gt_file)
+        print(gt_path)
+        exit()
         output_dir = os.path.join(base_dir, f'{dataset_name}_patches')
 
         # Check if files exist

@@ -32,8 +32,7 @@ from segmentation_models_pytorch.losses import FocalLoss
 # Helper Block for the Decoder
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=None, gamma=2, reduction='mean', ignore_index=-100,
-                 num_classes=None, device='cuda'):
+    def __init__(self, alpha=None, gamma=2, reduction='mean', ignore_index=-100, num_classes=None, device='cuda:0'):
         """
         Focal Loss for segmentation tasks
 
@@ -55,6 +54,7 @@ class FocalLoss(nn.Module):
         # Handle alpha parameter
         if alpha is None:
             self.alpha = self.compute_class_weights()
+            print("HERE")
         elif isinstance(alpha, (float, int)):
             self.alpha = torch.tensor([alpha] * num_classes, device=device)
         elif isinstance(alpha, (list, tuple)):
@@ -129,9 +129,16 @@ class FocalLoss(nn.Module):
             12: 5231321  # Snow/ice
         }
 
+        class_pixels = {
+            0: 100,
+            1: 100,
+            2: 100
+        }
+
         # Convert to tensor and ensure proper ordering
         total_pixels = sum(class_pixels.values())
         class_counts = torch.zeros(self.num_classes, device=self.device)
+        print(f"TEST: {self.num_classes}")
 
         for class_idx, count in class_pixels.items():
             if class_idx < self.num_classes:
@@ -196,9 +203,7 @@ class SparseDeformableMambaBlock(nn.Module):
         self.proj_in = nn.Linear(dim, self.expanded_dim)
         self.proj_out = nn.Linear(self.expanded_dim, dim)
 
-        # self.A = nn.Parameter(self._build_controllable_matrix(d_state))
         self.A = nn.Parameter(torch.zeros(d_state, d_state))
-
         self.B = nn.Parameter(torch.zeros(1, 1, d_state))
         self.C = nn.Parameter(torch.zeros(self.expanded_dim, d_state))
 
@@ -341,16 +346,16 @@ class MambaConv2D(nn.Module):
         self.out_channels = out_channels
 
         # Projection layers
-        self.proj_in = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.proj_in  = nn.Conv2d(in_channels,  out_channels, kernel_size=1)
         self.proj_out = nn.Conv2d(out_channels, out_channels, kernel_size=1)
 
         # Mamba block (now processes all positions in parallel)
         self.mamba = Mamba(
-                        d_model=out_channels,      # Dimension of input features
-                        d_state=16,       # State dimension
-                        d_conv=4,         # Conv kernel size
-                        expand=2,         # Expansion factor
-                    )
+            d_model=out_channels, # Dimension of input features
+            d_state=16,           # State dimension
+            d_conv=4,             # Conv kernel size
+            expand=2,             # Expansion factor
+        )
 
     def forward(self, x):
         B, C, H, W = x.shape
@@ -359,8 +364,7 @@ class MambaConv2D(nn.Module):
         x = self.proj_in(x)
 
         # Unfold patches (similar to convolution)
-        x_unfold = F.unfold(x, kernel_size=self.kernel_size,
-                            padding=self.padding, stride=self.stride)
+        x_unfold = F.unfold(x, kernel_size=self.kernel_size, padding=self.padding, stride=self.stride)
         # Reshape to (B, C, K*K, L) where L is H'*W'
         x_unfold = x_unfold.view(B, self.out_channels, self.kernel_size * self.kernel_size, -1)
         # Permute to (B, L, K*K, C)
@@ -386,9 +390,7 @@ class MambaConv2D(nn.Module):
         # Fold back to original spatial dimensions
         x_processed = x_processed.reshape(B, -1, L)  # B, C*K*K, L
 
-        output = F.fold(x_processed, output_size=(H, W),
-                        kernel_size=self.kernel_size,
-                        padding=self.padding, stride=self.stride)
+        output = F.fold(x_processed, output_size=(H, W), kernel_size=self.kernel_size, padding=self.padding, stride=self.stride)
 
         # Final projection
         output = self.proj_out(output)
@@ -410,8 +412,7 @@ class Canadian_mapping_model_func(nn.Module):
         self.cnn_backbone = L2HNet(width=64, image_band=in_channel+10)
         self.decode = DecoderCup()
 
-        self.global_mamba = \
-            nn.ModuleList([SparseDeformableMambaBlock(dim=1024, d_conv=self.d_conv) for i in range(2)])
+        self.global_mamba = nn.ModuleList([SparseDeformableMambaBlock(dim=1024, d_conv=self.d_conv) for i in range(2)])
 
         self.conv = nn.Sequential(
             nn.Conv2d(640, 256, 1),
@@ -971,45 +972,42 @@ class L2HNet(nn.Module):
         # A more standard and robust design
         self.out_conv1 = nn.Sequential(
             # First, do a conservative downsampling
-            nn.Conv2d(self.width * length, output_chs * length, kernel_size=3, stride=1,  # Use stride=1 first
-                      bias=False, padding=1, groups=32),
+            # Use stride=1 first
+            nn.Conv2d(self.width * length, output_chs * length, kernel_size=3, stride=1, bias=False, padding=1, groups=32),
             nn.GroupNorm(32, output_chs * length, eps=1e-6),
             nn.ReLU(),
             # Downsample using a dedicated layer (e.g., pooling or stride=2 conv)
-            nn.Conv2d(output_chs * length, output_chs * length, kernel_size=3, stride=2,
-                      bias=False, padding=1, groups=32),  # dilation=1 is default
+            nn.Conv2d(output_chs * length, output_chs * length, kernel_size=3, stride=2, bias=False, padding=1, groups=32),
             nn.GroupNorm(32, output_chs * length, eps=1e-6),
             nn.ReLU()
         )
 
         self.out_conv2 = nn.Sequential(
             # Another conservative conv followed by downsampling
-            nn.Conv2d(output_chs * length, 1024, kernel_size=3, stride=1,  # Increase channels gradually
-                      bias=False, padding=1, groups=32),
+            # Increase channels gradually
+            nn.Conv2d(output_chs * length, 1024, kernel_size=3, stride=1, bias=False, padding=1, groups=32),
             nn.GroupNorm(32, 1024, eps=1e-6),
             nn.ReLU(),
-            nn.Conv2d(1024, 1024, kernel_size=3, stride=2,
-                      bias=False, padding=1, groups=32),
+            nn.Conv2d(1024, 1024, kernel_size=3, stride=2, bias=False, padding=1, groups=32),
             nn.GroupNorm(32, 1024, eps=1e-6),
             nn.ReLU()
         )
 
         self.out_conv3 = nn.Sequential(
             # Layer 1: Dilated Conv for Context (stride=1)
-            nn.Conv2d(1024, 1024, kernel_size=3, stride=1,
-                      bias=False, padding=4, dilation=4, groups=32),
+            nn.Conv2d(1024, 1024, kernel_size=3, stride=1, bias=False, padding=4, dilation=4, groups=32),
             nn.GroupNorm(32, 1024, eps=1e-6),
             nn.ReLU(inplace=True),  # Add inplace=True to save memory
 
             # Layer 2: First 2x Downsample (e.g., with Strided Conv)
-            nn.Conv2d(1024, 1024, kernel_size=3, stride=2,  # Downsample here
-                      bias=False, padding=1, groups=32),  # dilation=1 is default
+            # Downsample here
+            nn.Conv2d(1024, 1024, kernel_size=3, stride=2, bias=False, padding=1, groups=32),  # dilation=1 is default
             nn.GroupNorm(32, 1024, eps=1e-6),
             nn.ReLU(inplace=True),
 
             # Layer 3: Second 2x Downsample
-            nn.Conv2d(1024, 1024, kernel_size=3, stride=2,  # Final downsample
-                      bias=False, padding=1, groups=32),
+            # Final downsample
+            nn.Conv2d(1024, 1024, kernel_size=3, stride=2, bias=False, padding=1, groups=32),
             nn.GroupNorm(32, 1024, eps=1e-6),
             nn.ReLU(inplace=True)
         )
@@ -1032,25 +1030,9 @@ class L2HNet(nn.Module):
         return output_d3, features[::-1]
 
 class Conv2dReLU(nn.Sequential):
-    def __init__(
-            self,
-            in_channels,
-            out_channels,
-            kernel_size,
-            padding=0,
-            stride=1,
-            use_batchnorm=True,
-    ):
-        conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride=stride,
-            padding=padding,
-            bias=not (use_batchnorm),
-        )
+    def __init__(self, in_channels, out_channels, kernel_size, padding=0, stride=1, use_batchnorm=True,):
+        conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=not(use_batchnorm),)
         relu = nn.ReLU(inplace=True)
-
         bn = nn.BatchNorm2d(out_channels)
 
         super(Conv2dReLU, self).__init__(conv, bn, relu)
@@ -1059,43 +1041,14 @@ class DecoderCup(nn.Module):
     def __init__(self,):
         super().__init__()
         head_channels = 512
-        self.conv_more = Conv2dReLU(
-            1024,
-            head_channels,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=True,
-        )
-        self.conv1 = Conv2dReLU(
-            1536,
-            512,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=True,
-        )
-        self.conv2 = Conv2dReLU(
-            1536,
-            640,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=True,
-        )
-        self.conv3 = Conv2dReLU(
-            1280,
-            1,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=True,
-        )
-        self.conv4 = Conv2dReLU(
-            1280,
-            256,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=True,
-        )
+        self.conv_more = Conv2dReLU(1024, head_channels, kernel_size=3, padding=1, use_batchnorm=True,)
+        self.conv1 = Conv2dReLU(1536,512, kernel_size=3, padding=1, use_batchnorm=True,)
+        self.conv2 = Conv2dReLU(1536, 640, kernel_size=3, padding=1, use_batchnorm=True,)
+        self.conv3 = Conv2dReLU(1280, 1, kernel_size=3, padding=1, use_batchnorm=True,)
+        self.conv4 = Conv2dReLU(1280, 256, kernel_size=3, padding=1, use_batchnorm=True,)
         self.up4 = nn.UpsamplingBilinear2d(scale_factor=4)
         self.up2 = nn.UpsamplingBilinear2d(scale_factor=2)
+
     def forward(self, hidden_states, features=None):
         # B, n_patch, hidden = hidden_states.size()  # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
         # h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))
@@ -1118,7 +1071,7 @@ class DecoderCup(nn.Module):
         return x1,x2
 
 class MonteCarloConsistency(nn.Module):
-    def __init__(self, base_model, num_samples=2, temperature=3.0):
+    def __init__(self, base_model, num_samples=2, temperature=3.0, num_classes=4):
         super().__init__()
         self.base_model = base_model
         self.num_samples = num_samples
@@ -1129,7 +1082,7 @@ class MonteCarloConsistency(nn.Module):
         self.losses_seg['c'] = self.CELoss
 
         # self.FLoss = FocalLoss(mode='multiclass', reduction='none', ignore_index=-1)
-        self.losses_seg['f'] = FocalLoss(reduction='none', ignore_index=-1, num_classes=self.base_model.num_classes)
+        self.losses_seg['f'] = FocalLoss(reduction='none', ignore_index=-1, num_classes=num_classes)
         self.ContrastiveLoss = ClassCenterContrastiveLoss()
 
     def forward(self, x, labels, long, lat, epoch):
@@ -1145,10 +1098,9 @@ class MonteCarloConsistency(nn.Module):
         PROJECTIONS = torch.stack(projection, dim=0)
         lbl_confs = [self.base_model._get_single_label_confidence_mask(LOGITS[i], labels) for i in range(2)]
         lbl_confs_mask = self.base_model._get_common_enhanced_confidence_masks(lbl_confs)
-        ss_masks_lbl = [self.base_model._get_selection_mask_by_label_confidence(epoch, lbl_confs_mask[i], labels, class_balanced=True) for i in
-                        range(2)]
-        centes1, centers2 = self.base_model.update_classcenter(ss_masks_lbl, labels, PROJECTIONS)
-        return LOGITS, centes1, centers2
+        ss_masks_lbl = [self.base_model._get_selection_mask_by_label_confidence(epoch, lbl_confs_mask[i], labels, class_balanced=True) for i in range(2)]
+        centers1, centers2 = self.base_model.update_classcenter(ss_masks_lbl, labels, PROJECTIONS)
+        return LOGITS, centers1, centers2
 
     def enable_dropout(self):
         for m in self.base_model.modules():
@@ -1461,11 +1413,6 @@ class UnsupervisedPixelContrastLoss(nn.Module):
 
         loss = F.cross_entropy(sim_matrix, labels)
         return loss
-
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 
 class EdgeEnhancementModule(nn.Module):

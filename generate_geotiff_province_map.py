@@ -192,9 +192,7 @@ def classify_scene_with_generator(
     latitude_set = []
     patch_counter = 0
 
-    for r, c, patch, long_, lat_ in tqdm(patch_generator(merged_scene, longtitude, latitude, patch_size),
-                           total=total_patches, 
-                           desc="Classifying patches"):
+    for r, c, patch, long_, lat_ in tqdm(patch_generator(merged_scene, longtitude, latitude, patch_size), total=total_patches,  desc="Classifying patches"):
         if max_patches is not None and patch_counter >= max_patches:
             break
         # Pad patch if at border
@@ -409,9 +407,7 @@ def map_generation(device, model, uncertainty_estimator, num_classes,accuracy_fi
         # for path in tqdm(scene_paths, desc=f"Loading bands for chunk {chunk_idx + 1}", leave=False):
         with rasterio.open(scene_dir) as src:
 
-            window = rasterio.windows.Window(
-                col_off=0, row_off=row_start, width=W, height=chunk_height
-            )
+            window = rasterio.windows.Window(col_off=0, row_off=row_start, width=W, height=chunk_height)
             # merged_chunk = src.read(window=rasterio.windows.Window(
             #     col_off=0, row_off=row_start, width=W, height=chunk_height
             # ))

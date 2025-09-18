@@ -19,7 +19,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 from itertools import islice
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # ==================== CONFIGURATION ====================
 
 def valid_mask(mask, ignore_index=-99):
@@ -241,8 +241,12 @@ class Trainer_container:
             mc_outputs, centers1, centers2 = self.MC_dropout_model(images, mask, longitude, latitude, epoch)
             # updata class center
             losses = self.MC_dropout_model.compute_total_loss(epoch, mc_outputs, centers1, centers2, mask, images,
-                                                 loss_weights={'ce': self.param["ce_weight"], 'mse': self.param["mse_weight"], 'edge': self.param["edge_weight"],
-                                                               'js_kl': self.param["js_kl_weight"]})
+                                loss_weights={
+                                    'ce': self.param["ce_weight"], 
+                                    'mse': self.param["mse_weight"], 
+                                    'edge': self.param["edge_weight"], 
+                                    'js_kl': self.param["js_kl_weight"]
+                                })
             loss = losses['total_loss']
             self.optimizer.zero_grad()
             loss.backward()
@@ -279,18 +283,10 @@ class Trainer_container:
         epoch_loss = running_loss / count if count > 0 else float("nan")
         avg_metrics = {
             'loss': epoch_loss,
-            'OA': metrics_accumulator['overall_acc'] / metrics_accumulator['batch_count'] if
-            metrics_accumulator[
-                'batch_count'] > 0 else 0.0,
-            'mean_acc': metrics_accumulator['mean_acc'] / metrics_accumulator['batch_count'] if
-            metrics_accumulator[
-                'batch_count'] > 0 else 0.0,
-            'mean_iou': metrics_accumulator['mean_iou'] / metrics_accumulator['batch_count'] if
-            metrics_accumulator[
-                'batch_count'] > 0 else 0.0,
-            'kappa': metrics_accumulator['kappa'] / metrics_accumulator['batch_count'] if
-            metrics_accumulator[
-                'batch_count'] > 0 else 0.0
+            'OA':       metrics_accumulator['overall_acc'] / metrics_accumulator['batch_count'] if metrics_accumulator['batch_count'] > 0 else 0.0,
+            'mean_acc': metrics_accumulator['mean_acc']    / metrics_accumulator['batch_count'] if metrics_accumulator['batch_count'] > 0 else 0.0,
+            'mean_iou': metrics_accumulator['mean_iou']    / metrics_accumulator['batch_count'] if metrics_accumulator['batch_count'] > 0 else 0.0,
+            'kappa':    metrics_accumulator['kappa']       / metrics_accumulator['batch_count'] if metrics_accumulator['batch_count'] > 0 else 0.0
         }
 
         # Print metrics
@@ -383,16 +379,16 @@ class Trainer_container:
         return avg_metrics
 
 
+
     def test_(self):
 
-        self.model.load_state_dict(torch.load(self.model_save_path))
-        self.model.eval()
-        # mae_model.load_state_dict(torch.load("mae_s2_pretrained.pth"))
-        # --- Evaluate on test set with updated metrics ---
         print("\nEvaluating model on test set...")
         all_predictions = []
         all_targets = []
+        
+        self.model.load_state_dict(torch.load(self.model_save_path))
         self.model.eval()  # Set model to evaluation mode
+
         with torch.no_grad():  # Disable gradient calculation for inference
             for sample in tqdm(self.test_loader, desc="Testing"):
                 hh = sample['hh'].to(self.device).unsqueeze(dim=1)
@@ -404,10 +400,12 @@ class Trainer_container:
 
                 images = torch.cat([hh, hv], dim=1)
                 images = torch.cat([images, hhhv], dim=1)
+                images = torch.cat([hh, hv, hhhv], dim=1)  # Shape: [B, 3, H, W]
 
                 outputs = self.model(images, masks, longitude, latitude)[0]
+                #outputs = segmentation_model(images)['out']  # DeepLabV3 returns dict with 'out' key
+                
                 predicted_classes = torch.argmax(outputs, dim=1)
-
                 all_predictions.append(predicted_classes.cpu())
                 all_targets.append(masks.cpu())
 
@@ -416,7 +414,7 @@ class Trainer_container:
         final_targets = torch.cat(all_targets, dim=0)
 
         # Calculate and print metrics
-
+        print(f"pred: {final_predictions.shape}, target: {final_targets.shape}")
         metrics_results = calculate_metrics(final_predictions, final_targets, num_classes=self.num_classes, ignore_index=self.ignore_index)
 
         print("\n📊 Final Evaluation Metrics:")
