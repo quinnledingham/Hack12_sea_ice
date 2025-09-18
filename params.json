@@ -1,0 +1,32 @@
+{
+    "Datainfo": {
+        "Uplimit_Cls_Num": 4,
+        "Num_channel": 3,
+        "Patch_size": 256
+    },
+    "Model_params": {
+        "hidden_dim": 128,
+        "d_conv": 4,
+        "seed": 42
+    },
+    "Train_setting": {
+        "num_classes": 3,
+        "learning_rate": 0.0001,
+        "Optimizer": "Adam",
+        "Epoch": 50,
+        "batch_size": 8,
+        "ignore_index": -1,
+        "state": "train",
+        "ce_weight": 1.0,
+        "js_kl_weight": 0.001,
+        "mse_weight": 0.1,
+        "edge_weight": 1,
+        "num_workers": 4,
+        "output_dir": "/mnt/storage/Yimin/Seaice/output",
+        "predict_whole_map": true,
+        "accuracy_report_name": "classes_classification_report.txt",
+        "prediction_map_name": "classification_map.tif",
+        "RCM_mosaic_image": "/beluga/Hack12_multi_type_seaice/HH_HV_mosaic.tif",
+        "Uncertanity_map_name": "Uncertanity_map.tif"
+    }
+}
